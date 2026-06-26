@@ -19,20 +19,29 @@
 # NUMA_LIBRARIES - List of libraries when using NUMA.
 # NUMA_FOUND - True if NUMA found.
 
-message(STATUS "looking numa in dir: : ${NUMA_INCLUDE_DIRS}")
-message(STATUS "root: : ${NUMA_ROOT_DIR}")
+# When building shared libraries, prefer system libnuma.so over static libnuma.a
+# to avoid PIC/versioned-symbol issues with getdeps-built static numa.
+if(BUILD_SHARED_LIBS)
+  message(STATUS "BUILD_SHARED_LIBS=ON: forcing system libnuma.so")
+  find_path(NUMA_INCLUDE_DIRS
+    NAMES numa.h numaif.h
+    PATHS /usr/include
+    NO_DEFAULT_PATH)
+  find_library(NUMA_LIBRARIES
+    NAMES numa
+    PATHS /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib
+    NO_DEFAULT_PATH)
+else()
+  find_path(NUMA_INCLUDE_DIRS
+    NAMES numa.h numaif.h
+    HINTS ${NUMA_ROOT_DIR}/include)
+  find_library(NUMA_LIBRARIES
+    NAMES numa
+    HINTS ${NUMA_ROOT_DIR}/lib)
+endif()
 
-find_path(NUMA_INCLUDE_DIRS
-  NAMES numa.h numaif.h
-  HINTS ${NUMA_ROOT_DIR}/include)
-
-message(STATUS "root: : ${NUMA_ROOT_DIR}")
-
-message(STATUS "looking numa in dir again : ${NUMA_INCLUDE_DIRS}")
-
-find_library(NUMA_LIBRARIES
-  NAMES numa
-  HINTS ${NUMA_ROOT_DIR}/lib)
+message(STATUS "NUMA include: ${NUMA_INCLUDE_DIRS}")
+message(STATUS "NUMA library: ${NUMA_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(NUMA DEFAULT_MSG NUMA_LIBRARIES NUMA_INCLUDE_DIRS)

@@ -319,8 +319,10 @@ add_subdirectory (allocator)
 add_subdirectory (interface)
 add_subdirectory (datatype)
 add_subdirectory (compact_cache)
-add_subdirectory (benchmarks)
-add_subdirectory (cachebench)
+if (BUILD_TESTS)
+  add_subdirectory (benchmarks)
+  add_subdirectory (cachebench)
+endif()
 
 # Install the source header files
 install(
@@ -405,14 +407,19 @@ install(EXPORT cachelib-exports
         DESTINATION ${CMAKE_INSTALL_DIR})
 
 if (BUILD_SHARED_LIBS)
-  set_target_properties(
+  set(CACHELIB_SHARED_TARGETS
     cachelib_allocator
-    cachelib_cachebench
     cachelib_common
     cachelib_datatype
     cachelib_interface
     cachelib_navy
     cachelib_shm
+  )
+  if (BUILD_TESTS AND TARGET cachelib_cachebench)
+    list(APPEND CACHELIB_SHARED_TARGETS cachelib_cachebench)
+  endif()
+  set_target_properties(
+    ${CACHELIB_SHARED_TARGETS}
     PROPERTIES
     SOVERSION ${CACHELIB_MAJOR_VERSION}
     VERSION ${PACKAGE_VERSION}

@@ -588,6 +588,10 @@ class BuildCmd(ProjectCmdBase):
                 elif args.verbose:
                     print("found good %s" % built_marker)
 
+        # Aggregate all installed deps into a unified prefix if requested
+        if args.aggregate_deps_dir:
+            aggregate_deps(loader.build_opts.install_dir, args.aggregate_deps_dir)
+
     def compute_dep_change_status(self, m, built_marker, loader):
         reconfigure = False
         sources_changed = False
@@ -725,6 +729,19 @@ class BuildCmd(ProjectCmdBase):
             default=False,
         )
         parser.add_argument("--build-type", **BUILD_TYPE_ARG)
+        parser.add_argument(
+            "--aggregate-deps-dir",
+            metavar="DIR",
+            default=None,
+            help=(
+                "After building, aggregate all installed headers and "
+                "libraries from scattered install dirs into DIR. "
+                "This produces DIR/include and DIR/lib with symlinks, "
+                "making it easy to compile against the deps with "
+                "-IDIR/include -LDIR/lib. "
+                'Example: --aggregate-deps-dir /tmp/cachelib-unified'
+            ),
+        )
 
 
 @cmd("fixup-dyn-deps", "Adjusts dynamic dependencies for packaging purposes")
@@ -765,6 +782,111 @@ class FixupDeps(ProjectCmdBase):
             action="store_true",
             default=False,
             help="Strip debug info while processing executables",
+        )
+
+
+def aggregate_deps(installed_dir, destdir, no_clean=False):
+    """Aggregate scattered getdeps install dirs into a unified prefix.
+
+    Scans all subdirectories under *installed_dir* and symlinks their
+    ``include/`` and ``lib/`` contents into *destdir*/{include,lib}.
+    Also creates soname/linker symlinks and patches RPATH when patchelf
+    is available.
+    """
+    unified_include = os.path.join(destdir, "include")
+    unified_lib = os.path.join(destdir, "lib")
+
+    if not no_clean:
+        shutil.rmtree(destdir, ignore_errors=True)
+    os.makedirs(unified_include, exist_ok=True)
+    os.makedirs(unified_lib, exist_ok=True)
+
+    if not os.path.isdir(installed_dir):
+        print(f"Warning: install dir {installed_dir} not found", file=sys.stderr)
+        return
+
+    # 1. Symlink headers
+    for entry in os.listdir(installed_dir):
+        inc_dir = os.path.join(installed_dir, entry, "include")
+        if not os.path.isdir(inc_dir):
+            continue
+        for item in os.listdir(inc_dir):
+            src = os.path.join(inc_dir, item)
+            dst = os.path.join(unified_include, item)
+            if not os.path.exists(dst):
+                os.symlink(os.path.realpath(src), dst)
+
+    # 2. Symlink shared libraries and static archives
+    for entry in os.listdir(installed_dir):
+        lib_dir = os.path.join(installed_dir, entry, "lib")
+        if not os.path.isdir(lib_dir):
+            continue
+        for item in os.listdir(lib_dir):
+            is_so = item.endswith(".so") or ".so." in item
+            is_a = item.endswith(".a")
+            if not is_so and not is_a:
+                continue
+            src = os.path.join(lib_dir, item)
+            if not os.path.isfile(src):
+                continue
+            dst = os.path.join(unified_lib, item)
+            if not os.path.exists(dst):
+                os.symlink(os.path.realpath(src), dst)
+
+    # 3. Create soname and linker symlinks
+    for f in os.listdir(unified_lib):
+        if ".so." not in f:
+            continue
+        base = f.split(".so.")[0]
+        ver = f.split(".so.")[1]
+        major = ver.split(".")[0]
+        soname = f"{base}.so.{major}"
+        linker = f"{base}.so"
+        if not os.path.exists(os.path.join(unified_lib, soname)):
+            os.symlink(f, os.path.join(unified_lib, soname))
+        if not os.path.exists(os.path.join(unified_lib, linker)):
+            os.symlink(f, os.path.join(unified_lib, linker))
+
+    # 4. Patch RPATH on aggregated .so (if patchelf available)
+    patchelf = shutil.which("patchelf")
+    if patchelf:
+        for f in os.listdir(unified_lib):
+            if not f.endswith(".so") and ".so." not in f:
+                continue
+            real_path = os.path.realpath(os.path.join(unified_lib, f))
+            try:
+                subprocess.run(
+                    [patchelf, "--set-rpath", f"{destdir}/lib", real_path],
+                    check=False,
+                    capture_output=True,
+                )
+            except OSError:
+                pass
+
+    print(f"Aggregated to {destdir}/{{include,lib}}")
+
+
+@cmd("aggregate-deps", "Aggregate getdeps install dirs into a unified prefix")
+class AggregateDepsCmd(ProjectCmdBase):
+    def run_project_cmd(self, args, loader, manifest):
+        aggregate_deps(
+            loader.build_opts.install_dir,
+            args.destdir,
+            no_clean=args.no_clean,
+        )
+
+    def setup_project_cmd_parser(self, parser):
+        parser.add_argument(
+            "destdir",
+            nargs="?",
+            default="/tmp/cachelib-unified",
+            help="Output directory [default: /tmp/cachelib-unified]",
+        )
+        parser.add_argument(
+            "--no-clean",
+            action="store_true",
+            default=False,
+            help="Do not remove existing destdir before aggregating",
         )
 
 
