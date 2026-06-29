@@ -2955,6 +2955,14 @@ std::unique_ptr<MemoryAllocator> CacheAllocator<CacheTrait>::initAllocator(
       return std::make_unique<MemoryAllocator>(getAllocatorConfig(config_),
                                                tempShm_->getAddr(),
                                                config_.getCacheSize());
+    } else if (config_.userMemoryAddr != nullptr) {
+      // User-provided memory for DRAM mode. Bypasses the default anonymous
+      // mmap — MemoryAllocator uses this address directly. Caller retains
+      // ownership. This is NOT SHM/persistence; it simply substitutes the
+      // internally mmap'd region with a user-supplied one.
+      return std::make_unique<MemoryAllocator>(getAllocatorConfig(config_),
+                                               config_.userMemoryAddr,
+                                               config_.getCacheSize());
     } else {
       return std::make_unique<MemoryAllocator>(getAllocatorConfig(config_),
                                                config_.getCacheSize());

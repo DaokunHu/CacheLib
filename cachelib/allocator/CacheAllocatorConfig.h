@@ -100,6 +100,12 @@ class CacheAllocatorConfig {
   // number of estimated cache entries.
   CacheAllocatorConfig& setAccessConfig(size_t numEntries);
 
+  // Set a user-provided memory address for the DRAM cache pool.
+  // When set, the allocator will use this memory directly instead of
+  // performing its own anonymous mmap. The caller retains ownership
+  // of the memory. This is independent of SHM/persistence.
+  CacheAllocatorConfig& setUserMemoryAddr(void* addr);
+
   // RemoveCallback is invoked for each item that is evicted or removed
   // explicitly from RAM
   CacheAllocatorConfig& setRemoveCallback(RemoveCb cb);
@@ -515,6 +521,14 @@ class CacheAllocatorConfig {
   // Attach shared memory to a fixed base address
   void* slabMemoryBaseAddr = nullptr;
 
+  // User-provided memory region for the DRAM cache. When set, the default
+  // anonymous mmap is bypassed and the allocator is initialized directly
+  // on this memory region. The memory must be aligned to Slab::kSize (4MB)
+  // and at least setCacheSize() bytes. The caller retains ownership.
+  // This is independent of SHM/persistence — it simply replaces the
+  // internal mmap with a user-supplied address.
+  void* userMemoryAddr = nullptr;
+
   // User defined default alloc sizes. If empty, we'll generate a default one.
   // This set of alloc sizes will be used for pools that user do not supply
   // a custom set of alloc sizes.
@@ -836,6 +850,13 @@ CacheAllocatorConfig<T>& CacheAllocatorConfig<T>::setAccessConfig(
   AccessConfig config{};
   config.sizeBucketsPowerAndLocksPower(numEntries);
   accessConfig = std::move(config);
+  return *this;
+}
+
+template <typename T>
+CacheAllocatorConfig<T>& CacheAllocatorConfig<T>::setUserMemoryAddr(
+    void* addr) {
+  userMemoryAddr = addr;
   return *this;
 }
 

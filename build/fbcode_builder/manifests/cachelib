@@ -11,10 +11,6 @@ repo_url = https://github.com/facebook/cachelib.git
 builder = cmake
 subdir = cachelib
 job_weight_mib = 2048
-# Fix: cachelib_binary_trace_gen shared lib has unresolved symbols in
-# BUILD_SHARED_LIBS=ON mode.  Link binary_trace_gen against the complete
-# cachelib_cachebench library instead.
-patchfile = cachelib_cachebench_shared_lib_fix.patch
 
 [cmake.defines]
 BUILD_SHARED_LIBS=ON
